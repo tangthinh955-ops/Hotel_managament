@@ -31,7 +31,7 @@ router.get('/all', async (req, res) => {
         if (req.redisClient && req.redisClient.isReady) {
             try {
                 await req.redisClient.setEx(cacheKey, 3600, JSON.stringify(rooms));
-            } catch (redisErr) {}
+            } catch (redisErr) { }
         }
 
         res.status(200).json(rooms);
@@ -44,12 +44,12 @@ router.get('/all', async (req, res) => {
 router.post('/create', async (req, res) => {
     try {
         const newRoom = await Room.create(req.body);
-        
+
         // [THỰC CHIẾN] - Xóa Cache Redis khi có phòng mới được thêm
         if (req.redisClient && req.redisClient.isReady) {
             try {
                 await req.redisClient.del('all_rooms');
-            } catch (redisErr) {}
+            } catch (redisErr) { }
         }
 
         res.status(201).json(newRoom);
@@ -68,10 +68,10 @@ router.put('/update/:id', async (req, res) => {
             { new: true, runValidators: true }    // runValidators: bắt Schema validate khi update
         );
         if (!updatedRoom) return res.status(404).json({ message: "Không tìm thấy phòng" });
-        
+
         // Xóa Cache Redis khi phòng bị sửa
         if (req.redisClient && req.redisClient.isReady) {
-            try { await req.redisClient.del('all_rooms'); } catch (redisErr) {}
+            try { await req.redisClient.del('all_rooms'); } catch (redisErr) { }
         }
 
         res.status(200).json(updatedRoom);
@@ -93,10 +93,10 @@ router.delete('/delete/:id', async (req, res) => {
 
         const deletedRoom = await Room.findByIdAndDelete(req.params.id);
         if (!deletedRoom) return res.status(404).json({ message: "Không tìm thấy phòng" });
-        
+
         // Xóa Cache Redis khi phòng bị xóa
         if (req.redisClient && req.redisClient.isReady) {
-            try { await req.redisClient.del('all_rooms'); } catch (redisErr) {}
+            try { await req.redisClient.del('all_rooms'); } catch (redisErr) { }
         }
 
         res.status(200).json({ message: "Đã xóa phòng thành công" });

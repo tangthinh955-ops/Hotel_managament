@@ -17,7 +17,7 @@ import bcrypt from 'bcryptjs';
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// [FIX 3] Rate Limiter cho API Login - Chống tấn công Brute Force
+// [FIX 3] Cấu hình Rate Limiter cho API Login chống tấn công Brute Force
 const loginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // Khung thời gian: 15 phút
     max: 10,                   // Tối đa 10 lần thử đăng nhập trong 15 phút
@@ -110,7 +110,7 @@ server.listen(PORT, () => {
     console.log(`🚀 Server đang chạy tại http://localhost:${PORT}`);
 });
 
-// [FIX 2] Global Error Handler - Bắt mọi lỗi bất ngờ, trả về JSON thay vì HTML xấu
+// [FIX 2] Xử lý lỗi toàn cục - Bắt mọi lỗi bất ngờ, trả về JSON thay vì HTML xấu
 app.use((err, req, res, next) => {
     console.error('🔴 Lỗi không được xử lý:', err.stack);
     res.status(err.status || 500).json({
@@ -118,7 +118,7 @@ app.use((err, req, res, next) => {
     });
 });
 
-// [FIX 9] Graceful Shutdown - Đóng connection sạch sẽ khi tắt server (Ctrl+C)
+// [FIX 9] Đóng server an toàn (Graceful Shutdown) - Kết thúc connection khi tắt server (Ctrl+C)
 process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
 

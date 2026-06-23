@@ -1,6 +1,6 @@
 import express from 'express';
 import Customer from '../models/Customer.js';
-import Booking from '../models/Booking.js'; // Cần kiểm tra đơn đặt phòng trước khi xóa khách
+import Booking from '../models/Booking.js';
 
 const router = express.Router();
 
@@ -27,8 +27,8 @@ router.put('/update/:id', async (req, res) => {
         const { name, email, phone } = req.body;
         const updatedCustomer = await Customer.findByIdAndUpdate(
             req.params.id,
-            { name, email, phone },              // Chỉ cho phép update các field này
-            { new: true, runValidators: true }   // runValidators: bắt Schema validate khi update
+            { name, email, phone },
+            { new: true, runValidators: true }
         );
         if (!updatedCustomer) return res.status(404).json({ message: "Không tìm thấy khách hàng" });
         res.status(200).json(updatedCustomer);
@@ -39,10 +39,10 @@ router.put('/update/:id', async (req, res) => {
 
 router.delete('/delete/:id', async (req, res) => {
     try {
-        // Kiểm tra xem khách hàng có đơn đặt phòng đang hoạt động không
+        // Kiểm tra booking active
         const activeBooking = await Booking.findOne({ 
             customerId: req.params.id, 
-            status: 'Active' // Chỉ kiểm tra đơn chưa hủy
+            status: 'Active'
         });
         if (activeBooking) {
             return res.status(400).json({ 

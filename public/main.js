@@ -1,33 +1,28 @@
 const API_URL = 'http://localhost:3000/api';
 
 // ==========================================
-// KIỂM TRA ĐĂNG NHẬP (BẢO VỆ FRONTEND)
+// Auth Check
 // ==========================================
 if (!localStorage.getItem('token')) {
     window.location.href = 'login.html';
 }
 
 // ==========================================
-// HÀM FETCH CÓ TOKEN - Dùng thay cho fetch() thông thường
-// ==========================================
-// Thay vì sửa từng dòng fetch() một, ta tạo hàm wrapper này.
-// Mọi nơi trong code gọi authFetch(...) sẽ tự động đính kèm
-// Token JWT vào Header của Request mà không cần làm thủ công.
+// Auth Fetch Wrapper
 // ==========================================
 async function authFetch(url, options = {}) {
     const token = localStorage.getItem('token');
 
-    // Tự động gắn Token vào Header Authorization
+    // Đính kèm JWT token
     const headers = {
         'Content-Type': 'application/json',
         ...options.headers,
-        'Authorization': `Bearer ${token}`  // ← Chìa "thẻ từ" ra trước bảo vệ
+        'Authorization': `Bearer ${token}`
     };
 
     const response = await fetch(url, { ...options, headers });
 
-    // Nếu Server trả về 401 hoặc 403 (Token hết hạn / không hợp lệ)
-    // → Tự động đăng xuất và chuyển về trang login
+    // Xử lý lỗi xác thực (401/403)
     if (response.status === 401 || response.status === 403) {
         alert('⚠️ Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
         localStorage.removeItem('token');
@@ -40,7 +35,7 @@ async function authFetch(url, options = {}) {
 }
 
 // ==========================================
-// CẤU HÌNH SOCKET.IO CLIENT & TOAST NOTIFICATION
+// Socket.io & Notifications
 // ==========================================
 let socket;
 if (typeof io !== 'undefined') {
@@ -54,7 +49,7 @@ if (typeof io !== 'undefined') {
     socket.on('new_booking_alert', (data) => {
         showToast(`🔔 CÓ ĐƠN MỚI: Phòng ${data.roomNumber} vừa được khách hàng đặt thành công!`);
         
-        // Nếu đang ở trang có thống kê/bảng, tự động load lại dữ liệu để cập nhật realtime
+        // Cập nhật giao diện realtime
         if (document.getElementById('stats-container')) loadStats();
         if (document.getElementById('room-table-body')) loadRooms();
         if (document.getElementById('booking-table-body')) loadBookings();

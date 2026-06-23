@@ -4,25 +4,24 @@ import Room from '../models/Room.js'; // Phải Import Room để còn cập nh�
 
 const router = express.Router();
 
-// Lấy danh sách đơn đặt (Populate 2 bảng)
+// Lấy danh sách booking
 router.get('/all', async (req, res) => {
     try {
-        // Dùng populate để lấy chi tiết roomId và customerId
         const bookings = await Booking.find()
-            .populate('roomId', 'roomNumber type price') // Chỉ lấy mã phòng, loại, giá
-            .populate('customerId', 'name phone');       // Chỉ lấy tên, SĐT của khách
+            .populate('roomId', 'roomNumber type price')
+            .populate('customerId', 'name phone');
         res.status(200).json(bookings);
     } catch (error) {
         res.status(500).json({ message: "Lỗi server", error: error.message });
     }
 });
 
-// Tạo đơn đặt phòng MỚI
+// Tạo booking mới
 router.post('/create', async (req, res) => {
     try {
         const { roomId, customerId, checkInDate, checkOutDate } = req.body;
 
-        // 0. VALIDATE NGÀY - Lớp bảo vệ ở Backend (Frontend có thể bị bypass)
+        // Validate ngày check-in/check-out
         if (!checkInDate || !checkOutDate) {
             return res.status(400).json({ message: "Thiếu ngày nhận hoặc trả phòng!" });
         }
@@ -40,7 +39,7 @@ router.post('/create', async (req, res) => {
             return res.status(400).json({ message: "Lỗi: Ngày trả phòng phải lớn hơn ngày nhận phòng ít nhất 1 ngày!" });
         }
 
-        // 1. Kiểm tra xem phòng có tồn tại và đang "Available" không?
+        // Kiểm tra trạng thái phòng
         const room = await Room.findById(roomId);
         if (!room) {
             return res.status(404).json({ message: "Không tìm thấy phòng này!" });
@@ -49,7 +48,6 @@ router.post('/create', async (req, res) => {
             return res.status(400).json({ message: "Lỗi: Phòng này đã có người đặt!" });
         }
 
-        // 2. Nếu phòng trống -> Tạo Booking
         const newBooking = await Booking.create({
             roomId,
             customerId,
@@ -57,11 +55,11 @@ router.post('/create', async (req, res) => {
             checkOutDate
         });
 
-        // 3. Đổi trạng thái phòng thành 'Booked'
+        // Đổi trạng thái phòng
         room.status = 'Booked';
-        await room.save(); // Lưu lại thay đổi vào bảng Room
+        await room.save();
 
-        // [THỰC CHIẾN] - Xóa Cache Redis để list phòng tự động cập nhật data mới
+        // Xóa cache phòng
         if (req.redisClient && req.redisClient.isReady) {
             try {
                 await req.redisClient.del('all_rooms');
@@ -70,7 +68,7 @@ router.post('/create', async (req, res) => {
             }
         }
 
-        // [THỰC CHIẾN] - Bắn sự kiện Socket.io cho tất cả Admin đang online
+        // Thông báo qua Socket.io
         if (req.io) {
             req.io.emit('new_booking_alert', { roomNumber: room.roomNumber });
         }
@@ -81,7 +79,7 @@ router.post('/create', async (req, res) => {
     }
 });
 
-// Cập nhật đơn đặt phòng (Đổi phòng, đổi ngày, đổi khách)
+// Cập nhật booking
 router.put('/update/:id', async (req, res) => {
     try {
         const { roomId, customerId, checkInDate, checkOutDate } = req.body;
@@ -89,28 +87,28 @@ router.put('/update/:id', async (req, res) => {
         const booking = await Booking.findById(req.params.id);
         if (!booking) return res.status(404).json({ message: "Không tìm thấy đơn đặt phòng" });
 
-        // Nếu người dùng chọn đổi sang một phòng MỚI khác với phòng cũ
+        // Xử lý đổi phòng
         if (roomId && (!booking.roomId || roomId !== booking.roomId.toString())) {
             const newRoom = await Room.findById(roomId);
             if (!newRoom) return res.status(404).json({ message: "Phòng mới không tồn tại" });
             if (newRoom.status === 'Booked') return res.status(400).json({ message: "Phòng mới đã có người đặt!" });
 
             if (booking.roomId) {
-                await Room.findByIdAndUpdate(booking.roomId, { status: 'Available' }); // Trả lại phòng cũ
+                await Room.findByIdAndUpdate(booking.roomId, { status: 'Available' });
             }
-            newRoom.status = 'Booked'; // Đặt phòng mới
+            newRoom.status = 'Booked';
             await newRoom.save();
         }
 
-        // Cập nhật thông tin vào đơn (chỉ các field được phép, kèm validate)
+        // Cập nhật thông tin booking
         const { roomId: newRoomId, customerId: newCustomerId, checkInDate: newCheckIn, checkOutDate: newCheckOut } = req.body;
         const updatedBooking = await Booking.findByIdAndUpdate(
             req.params.id,
             { roomId: newRoomId, customerId: newCustomerId, checkInDate: newCheckIn, checkOutDate: newCheckOut },
-            { new: true, runValidators: true } // runValidators: bắt Schema chạy lại khi update
+            { new: true, runValidators: true }
         );
 
-        // Xóa Cache Redis vì trạng thái phòng đã thay đổi
+        // Xóa cache phòng
         if (req.redisClient && req.redisClient.isReady) {
             try {
                 await req.redisClient.del('all_rooms');
@@ -125,10 +123,9 @@ router.put('/update/:id', async (req, res) => {
     }
 });
 
-// Hủy/Xóa đơn đặt phòng
+// Hủy/Xóa booking
 router.delete('/delete/:id', async (req, res) => {
     try {
-        // 1. Tìm đơn đặt phòng sắp bị xóa để lấy cái roomId
         const booking = await Booking.findById(req.params.id);
         if (!booking) {
             return res.status(404).json({ message: "Không tìm thấy đơn đặt phòng" });
@@ -137,16 +134,16 @@ router.delete('/delete/:id', async (req, res) => {
             return res.status(400).json({ message: "Đơn đặt phòng này đã bị hủy từ trước!" });
         }
 
-        // 2. Trả lại trạng thái phòng thành 'Available'
+        // Giải phóng phòng
         if (booking.roomId) {
             await Room.findByIdAndUpdate(booking.roomId, { status: 'Available' });
         }
 
-        // 3. Đánh dấu đơn là đã hủy (Soft Delete) thay vì xóa hẳn
+        // Soft delete booking
         booking.status = 'Canceled';
         await booking.save();
 
-        // 4. Xóa Cache Redis để giao diện hiển thị phòng đã trả về 'Available' ngay lập tức
+        // Xóa cache phòng
         if (req.redisClient && req.redisClient.isReady) {
             try {
                 await req.redisClient.del('all_rooms');
