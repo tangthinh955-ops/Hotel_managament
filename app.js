@@ -1,24 +1,40 @@
+import 'dotenv/config'; // Load .env trước tất cả mọi thứ
 import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
 import http from 'http';
 import { Server } from 'socket.io';
 import { createClient } from 'redis';
+import rateLimit from 'express-rate-limit'; // [FIX 3] Chống Brute Force
 import roomRoutes from './routes/roomRoutes.js';
 import customerRoutes from './routes/customerRoutes.js';
 import bookingRoutes from './routes/bookingRoutes.js';
 import authRoutes from './routes/authRoutes.js';
+import verifyToken from './middleware/authMiddleware.js';
 import User from './models/User.js';
 import bcrypt from 'bcryptjs';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// [FIX 3] Rate Limiter cho API Login - Chống tấn công Brute Force
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // Khung thời gian: 15 phút
+    max: 10,                   // Tối đa 10 lần thử đăng nhập trong 15 phút
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: '❌ Quá nhiều lần đăng nhập thất bại. Vui lòng thử lại sau 15 phút.' }
+});
+
 // ==========================================
 // MIDDLEWARES
 // ==========================================
-app.use(cors()); // Mở cổng giao tiếp cho Frontend gọi API
-app.use(express.json()); // Dịch dữ liệu gửi lên dưới dạng JSON
+// [FIX 1] CORS chỉ cho phép đúng domain, không mở cho mọi người
+app.use(cors({
+    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    methods: ['GET', 'POST', 'PUT', 'DELETE']
+}));
+app.use(express.json());
 app.use(express.static('public'));
 
 // ==========================================
@@ -52,7 +68,7 @@ app.use((req, res, next) => {
 // ==========================================
 // KẾT NỐI MONGODB
 // ==========================================
-const MONGO_URI = 'mongodb://127.0.0.1:27017/hotel_management';
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/hotel_management';
 
 mongoose.connect(MONGO_URI)
     .then(async () => {
@@ -78,10 +94,10 @@ async function initAdminUser() {
 // ==========================================
 // ROUTES SẼ GẮN Ở ĐÂY (Bước tiếp theo)
 // ==========================================
-app.use('/api/rooms', roomRoutes);
-app.use('/api/customers', customerRoutes);
-app.use('/api/bookings', bookingRoutes);
-app.use('/api/auth', authRoutes);
+app.use('/api/auth', loginLimiter, authRoutes); // ✅ Rate Limit bảo vệ login
+app.use('/api/rooms', verifyToken, roomRoutes);
+app.use('/api/customers', verifyToken, customerRoutes);
+app.use('/api/bookings', verifyToken, bookingRoutes);
 
 app.get('/', (req, res) => {
     res.send('API Quản lý Khách sạn đang hoạt động!');
@@ -91,5 +107,27 @@ app.get('/', (req, res) => {
 // KHỞI ĐỘNG SERVER
 // ==========================================
 server.listen(PORT, () => {
-    console.log(`🚀 Server đang chạy tại http://localhost:${PORT}`); 
+    console.log(`🚀 Server đang chạy tại http://localhost:${PORT}`);
 });
+
+// [FIX 2] Global Error Handler - Bắt mọi lỗi bất ngờ, trả về JSON thay vì HTML xấu
+app.use((err, req, res, next) => {
+    console.error('🔴 Lỗi không được xử lý:', err.stack);
+    res.status(err.status || 500).json({
+        message: err.message || 'Lỗi máy chủ nội bộ'
+    });
+});
+
+// [FIX 9] Graceful Shutdown - Đóng connection sạch sẽ khi tắt server (Ctrl+C)
+process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT', gracefulShutdown);
+
+async function gracefulShutdown() {
+    console.log('🟡 Đang tắt server an toàn...');
+    server.close(async () => {
+        await mongoose.connection.close();
+        if (redisClient.isOpen) await redisClient.disconnect();
+        console.log('✅ Server đã tắt hoàn toàn.');
+        process.exit(0);
+    });
+}

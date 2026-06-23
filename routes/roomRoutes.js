@@ -1,5 +1,6 @@
 import express from 'express';
 import Room from '../models/Room.js';
+import Booking from '../models/Booking.js'; // Cần kiểm tra booking khi xóa phòng
 
 const router = express.Router();
 
@@ -60,14 +61,17 @@ router.post('/create', async (req, res) => {
 // Cập nhật thông tin phòng
 router.put('/update/:id', async (req, res) => {
     try {
-        const updatedRoom = await Room.findByIdAndUpdate(req.params.id, req.body, { new: true });
+        const { roomNumber, type, price, status } = req.body;
+        const updatedRoom = await Room.findByIdAndUpdate(
+            req.params.id,
+            { roomNumber, type, price, status }, // Chỉ cập nhật các field này
+            { new: true, runValidators: true }    // runValidators: bắt Schema validate khi update
+        );
         if (!updatedRoom) return res.status(404).json({ message: "Không tìm thấy phòng" });
         
-        // [THỰC CHIẾN] - Xóa Cache Redis khi phòng bị sửa
+        // Xóa Cache Redis khi phòng bị sửa
         if (req.redisClient && req.redisClient.isReady) {
-            try {
-                await req.redisClient.del('all_rooms');
-            } catch (redisErr) {}
+            try { await req.redisClient.del('all_rooms'); } catch (redisErr) {}
         }
 
         res.status(200).json(updatedRoom);
@@ -79,14 +83,20 @@ router.put('/update/:id', async (req, res) => {
 // Xóa phòng
 router.delete('/delete/:id', async (req, res) => {
     try {
+        // [FIX 6] Kiểm tra xem phòng có đang được đặt không trước khi xóa
+        const activeBooking = await Booking.findOne({ roomId: req.params.id, status: 'Active' });
+        if (activeBooking) {
+            return res.status(400).json({
+                message: "❌ Không thể xóa! Phòng này đang có khách đặt. Hãy hủy đơn đặt phòng trước."
+            });
+        }
+
         const deletedRoom = await Room.findByIdAndDelete(req.params.id);
         if (!deletedRoom) return res.status(404).json({ message: "Không tìm thấy phòng" });
         
-        // [THỰC CHIẾN] - Xóa Cache Redis khi phòng bị xóa
+        // Xóa Cache Redis khi phòng bị xóa
         if (req.redisClient && req.redisClient.isReady) {
-            try {
-                await req.redisClient.del('all_rooms');
-            } catch (redisErr) {}
+            try { await req.redisClient.del('all_rooms'); } catch (redisErr) {}
         }
 
         res.status(200).json({ message: "Đã xóa phòng thành công" });

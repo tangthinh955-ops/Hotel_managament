@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 
 const router = express.Router();
-const JWT_SECRET = 'my_super_secret_key_123'; // Nên đặt trong file .env cho dự án thực tế
+const JWT_SECRET = process.env.JWT_SECRET; // Lấy từ file .env
 
 router.post('/login', async (req, res) => {
     try {

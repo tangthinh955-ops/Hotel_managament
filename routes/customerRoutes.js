@@ -1,5 +1,6 @@
 import express from 'express';
 import Customer from '../models/Customer.js';
+import Booking from '../models/Booking.js'; // Cần kiểm tra đơn đặt phòng trước khi xóa khách
 
 const router = express.Router();
 
@@ -23,7 +24,12 @@ router.post('/create', async (req, res) => {
 
 router.put('/update/:id', async (req, res) => {
     try {
-        const updatedCustomer = await Customer.findByIdAndUpdate(req.params.id, req.body, { new: true });
+        const { name, email, phone } = req.body;
+        const updatedCustomer = await Customer.findByIdAndUpdate(
+            req.params.id,
+            { name, email, phone },              // Chỉ cho phép update các field này
+            { new: true, runValidators: true }   // runValidators: bắt Schema validate khi update
+        );
         if (!updatedCustomer) return res.status(404).json({ message: "Không tìm thấy khách hàng" });
         res.status(200).json(updatedCustomer);
     } catch (error) {
@@ -33,6 +39,17 @@ router.put('/update/:id', async (req, res) => {
 
 router.delete('/delete/:id', async (req, res) => {
     try {
+        // Kiểm tra xem khách hàng có đơn đặt phòng đang hoạt động không
+        const activeBooking = await Booking.findOne({ 
+            customerId: req.params.id, 
+            status: 'Active' // Chỉ kiểm tra đơn chưa hủy
+        });
+        if (activeBooking) {
+            return res.status(400).json({ 
+                message: "❌ Không thể xóa! Khách hàng này đang có đơn đặt phòng hoạt động. Hãy hủy đơn trước." 
+            });
+        }
+
         const deletedCustomer = await Customer.findByIdAndDelete(req.params.id);
         if (!deletedCustomer) return res.status(404).json({ message: "Không tìm thấy khách hàng" });
         res.status(200).json({ message: "Đã xóa khách hàng" });
