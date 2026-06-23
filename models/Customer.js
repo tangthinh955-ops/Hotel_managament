@@ -11,8 +11,9 @@ const customerSchema = new mongoose.Schema({
         type: String, 
         required: true, 
         unique: true,
-        lowercase: true, // Tự động chuyển email về chữ thường
-        match: [/^[\w\.-]+@gmail\.com$/, 'Email phải có định dạng @gmail.com']
+        lowercase: true,
+        trim: true,
+        match: [/^\S+@\S+\.\S+$/, 'Email không hợp lệ (VD: ten@example.com)']
     },
     phone: { 
         type: String, 

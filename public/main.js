@@ -8,6 +8,38 @@ if (!localStorage.getItem('token')) {
 }
 
 // ==========================================
+// HÀM FETCH CÓ TOKEN - Dùng thay cho fetch() thông thường
+// ==========================================
+// Thay vì sửa từng dòng fetch() một, ta tạo hàm wrapper này.
+// Mọi nơi trong code gọi authFetch(...) sẽ tự động đính kèm
+// Token JWT vào Header của Request mà không cần làm thủ công.
+// ==========================================
+async function authFetch(url, options = {}) {
+    const token = localStorage.getItem('token');
+
+    // Tự động gắn Token vào Header Authorization
+    const headers = {
+        'Content-Type': 'application/json',
+        ...options.headers,
+        'Authorization': `Bearer ${token}`  // ← Chìa "thẻ từ" ra trước bảo vệ
+    };
+
+    const response = await fetch(url, { ...options, headers });
+
+    // Nếu Server trả về 401 hoặc 403 (Token hết hạn / không hợp lệ)
+    // → Tự động đăng xuất và chuyển về trang login
+    if (response.status === 401 || response.status === 403) {
+        alert('⚠️ Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+        localStorage.removeItem('token');
+        localStorage.removeItem('userEmail');
+        window.location.href = 'login.html';
+        return; // Dừng không xử lý tiếp
+    }
+
+    return response;
+}
+
+// ==========================================
 // CẤU HÌNH SOCKET.IO CLIENT & TOAST NOTIFICATION
 // ==========================================
 let socket;
@@ -79,9 +111,9 @@ document.addEventListener('DOMContentLoaded', () => {
 let globalBookings = []; // Biến cache dữ liệu để dùng cho bộ lọc biểu đồ
 
 async function loadStats() {
-    const rooms = await fetch(`${API_URL}/rooms/all`).then(res => res.json());
-    const customers = await fetch(`${API_URL}/customers/all`).then(res => res.json());
-    const bookings = await fetch(`${API_URL}/bookings/all`).then(res => res.json());
+    const rooms = await authFetch(`${API_URL}/rooms/all`).then(res => res.json());
+    const customers = await authFetch(`${API_URL}/customers/all`).then(res => res.json());
+    const bookings = await authFetch(`${API_URL}/bookings/all`).then(res => res.json());
     globalBookings = bookings; // Lưu lại để dùng khi đổi bộ lọc
 
     document.getElementById('total-rooms').innerText = rooms.length;
@@ -251,7 +283,7 @@ function renderCharts(rooms, bookings) {
 
 // --- LOGIC PHÒNG (ROOMS) ---
 async function loadRooms() {
-    const data = await fetch(`${API_URL}/rooms/all`).then(res => res.json());
+    const data = await authFetch(`${API_URL}/rooms/all`).then(res => res.json());
     const tbody = document.getElementById('room-table-body');
     tbody.innerHTML = data.map(r => `
         <tr class="tr-hover">
@@ -274,7 +306,7 @@ async function addRoom(event) {
         type: document.getElementById('type').value,
         price: document.getElementById('price').value
     };
-    const res = await fetch(`${API_URL}/rooms/create`, {
+    const res = await authFetch(`${API_URL}/rooms/create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -331,7 +363,7 @@ function editRoom(id, oldRoomNumber, oldType, oldPrice, oldStatus) {
                 price: Number(modal.querySelector('#edit-room-price').value),
                 status: modal.querySelector('#edit-room-status').value
             };
-            const res = await fetch(`${API_URL}/rooms/update/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            const res = await authFetch(`${API_URL}/rooms/update/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
             
             if (res.ok) {
                 location.reload();
@@ -352,7 +384,7 @@ function editRoom(id, oldRoomNumber, oldType, oldPrice, oldStatus) {
 
 // --- LOGIC KHÁCH HÀNG (CUSTOMERS) ---
 async function loadCustomers(searchQuery = '') {
-    const data = await fetch(`${API_URL}/customers/all`).then(res => res.json());
+    const data = await authFetch(`${API_URL}/customers/all`).then(res => res.json());
     const tbody = document.getElementById('customer-table-body');
 
     // Lọc dữ liệu nếu có từ khóa tìm kiếm (không phân biệt hoa thường)
@@ -381,7 +413,7 @@ async function addCustomer(event) {
         email: document.getElementById('email').value,
         phone: document.getElementById('phone').value
     };
-    const res = await fetch(`${API_URL}/customers/create`, {
+    const res = await authFetch(`${API_URL}/customers/create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -428,7 +460,7 @@ function editCustomer(id, oldName, oldEmail, oldPhone) {
                 email: modal.querySelector('#edit-cus-email').value,
                 phone: modal.querySelector('#edit-cus-phone').value
             };
-            const res = await fetch(`${API_URL}/customers/update/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            const res = await authFetch(`${API_URL}/customers/update/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
             
             if (res.ok) {
                 location.reload();
@@ -460,7 +492,7 @@ async function viewCustomerHistory(customerId) {
             return;
         }
 
-        const bookings = await fetch(`${API_URL}/bookings/all`).then(res => res.json());
+        const bookings = await authFetch(`${API_URL}/bookings/all`).then(res => res.json());
         
         // Lọc các đơn đặt phòng thuộc về khách hàng này và sắp xếp mới nhất lên đầu
         const history = bookings
@@ -534,7 +566,7 @@ async function viewCustomerHistory(customerId) {
 
 // --- LOGIC ĐẶT PHÒNG (BOOKINGS) ---
 async function loadBookings() {
-    const data = await fetch(`${API_URL}/bookings/all`).then(res => res.json());
+    const data = await authFetch(`${API_URL}/bookings/all`).then(res => res.json());
     const tbody = document.getElementById('booking-table-body');
     tbody.innerHTML = data.map(b => {
         // Tính tổng tiền cho từng đơn đặt phòng
@@ -568,8 +600,8 @@ async function loadBookings() {
 }
 
 async function editBooking(id, oldRoomId, oldCustomerId, oldCheckIn, oldCheckOut) {
-    const rooms = await fetch(`${API_URL}/rooms/all`).then(res => res.json());
-    const customers = await fetch(`${API_URL}/customers/all`).then(res => res.json());
+    const rooms = await authFetch(`${API_URL}/rooms/all`).then(res => res.json());
+    const customers = await authFetch(`${API_URL}/customers/all`).then(res => res.json());
 
     const formatCheckIn = oldCheckIn ? new Date(oldCheckIn).toISOString().split('T')[0] : '';
     const formatCheckOut = oldCheckOut ? new Date(oldCheckOut).toISOString().split('T')[0] : '';
@@ -648,7 +680,7 @@ async function editBooking(id, oldRoomId, oldCustomerId, oldCheckIn, oldCheckOut
                 checkInDate: checkInInput.value,
                 checkOutDate: checkOutInput.value
             };
-            const res = await fetch(`${API_URL}/bookings/update/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            const res = await authFetch(`${API_URL}/bookings/update/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
             
             if (res.ok) {
                 location.reload();
@@ -668,8 +700,8 @@ async function editBooking(id, oldRoomId, oldCustomerId, oldCheckIn, oldCheckOut
 }
 
 async function prepareBookingForm() {
-    const rooms = await fetch(`${API_URL}/rooms/all`).then(res => res.json());
-    const customers = await fetch(`${API_URL}/customers/all`).then(res => res.json());
+    const rooms = await authFetch(`${API_URL}/rooms/all`).then(res => res.json());
+    const customers = await authFetch(`${API_URL}/customers/all`).then(res => res.json());
 
     // Chỉ hiện phòng Available
     const roomSelect = document.getElementById('roomId');
@@ -761,7 +793,7 @@ async function createBooking(event) {
         checkInDate: checkInValue,
         checkOutDate: checkOutValue
     };
-    const res = await fetch(`${API_URL}/bookings/create`, {
+    const res = await authFetch(`${API_URL}/bookings/create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -785,7 +817,7 @@ async function cancelBooking(id, checkInDateStr) {
     }
 
     if (confirm(confirmMsg)) {
-        const res = await fetch(`${API_URL}/bookings/delete/${id}`, { method: 'DELETE' });
+        const res = await authFetch(`${API_URL}/bookings/delete/${id}`, { method: 'DELETE' });
         const data = await res.json();
         alert(data.message);
         if (res.ok) location.reload();
@@ -795,7 +827,12 @@ async function cancelBooking(id, checkInDateStr) {
 // --- HÀM XÓA CHUNG ---
 async function deleteItem(type, id) {
     if (confirm('Bạn có chắc chắn muốn xóa không?')) {
-        await fetch(`${API_URL}/${type}/delete/${id}`, { method: 'DELETE' });
-        location.reload();
+        const res = await authFetch(`${API_URL}/${type}/delete/${id}`, { method: 'DELETE' });
+        if (res && res.ok) {
+            location.reload();
+        } else if (res) {
+            const errData = await res.json();
+            alert(errData.message || "Đã xảy ra lỗi khi xóa!");
+        }
     }
 }
